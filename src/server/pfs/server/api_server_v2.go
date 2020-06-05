@@ -93,7 +93,7 @@ func (a *apiServerV2) PutTarV2(server pfs.API_PutTarV2Server) (retErr error) {
 }
 
 type putTarReader struct {
-	server    pfs.API_PutTarV2Server
+	server    pfs.API_PutTarServer
 	r         *bytes.Reader
 	bytesRead int64
 }
@@ -161,7 +161,7 @@ func (a *apiServerV2) GetTarConditionalV2(server pfs.API_GetTarConditionalV2Serv
 		glob := request.File.Path
 		var bytesWritten int64
 		err := a.driver.getTarConditional(server.Context(), repo, commit, glob, func(fr *FileReader) error {
-			if err := server.Send(&pfs.GetTarConditionalResponseV2{FileInfo: fr.Info()}); err != nil {
+			if err := server.Send(&pfs.GetTarConditionalResponse{FileInfo: fr.Info()}); err != nil {
 				return err
 			}
 			req, err := server.Recv()
@@ -183,25 +183,25 @@ func (a *apiServerV2) GetTarConditionalV2(server pfs.API_GetTarConditionalV2Serv
 			if err := w.Flush(); err != nil {
 				return err
 			}
-			return server.Send(&pfs.GetTarConditionalResponseV2{EOF: true})
+			return server.Send(&pfs.GetTarConditionalResponse{EOF: true})
 		})
 		return bytesWritten, err
 	})
 }
 
 type getTarConditionalWriter struct {
-	server       pfs.API_GetTarConditionalV2Server
+	server       pfs.API_GetTarConditionalServer
 	bytesWritten int64
 }
 
-func newGetTarConditionalWriter(server pfs.API_GetTarConditionalV2Server) *getTarConditionalWriter {
+func newGetTarConditionalWriter(server pfs.API_GetTarConditionalServer) *getTarConditionalWriter {
 	return &getTarConditionalWriter{
 		server: server,
 	}
 }
 
 func (w *getTarConditionalWriter) Write(data []byte) (int, error) {
-	if err := w.server.Send(&pfs.GetTarConditionalResponseV2{Data: data}); err != nil {
+	if err := w.server.Send(&pfs.GetTarConditionalResponse{Data: data}); err != nil {
 		return 0, err
 	}
 	w.bytesWritten += int64(len(data))
