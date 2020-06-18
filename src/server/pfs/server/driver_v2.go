@@ -8,6 +8,7 @@ import (
 	"path"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -542,7 +543,8 @@ func (d *driverV2) inspectFile(pachClient *client.APIClient, file *pfs.File) (fi
 	}
 	commit := commitInfo.Commit
 	stopIter := errors.New("stop iteration")
-	err = d.getTarConditional(pachClient.Ctx(), commit.Repo.Name, commit.ID, file.Path, func(fr *FileReader) error {
+	path := "/" + strings.Trim(file.Path, "/")
+	err = d.getTarConditional(pachClient.Ctx(), commit.Repo.Name, commit.ID, path, func(fr *FileReader) error {
 		fi = fr.Info()
 		return stopIter
 	})

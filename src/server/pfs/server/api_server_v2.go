@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"time"
 
@@ -47,6 +48,10 @@ func newAPIServerV2(
 	}
 	go func() { s2.env.GetPachClient(context.Background()) }() // Begin dialing connection on startup
 	return s2, nil
+}
+
+func (a *apiServerV2) PutFile(serv pfs.API_PutFileServer) error {
+	return errors.New("PutFile not implemented in V2")
 }
 
 func (a *apiServerV2) PutTarV2(server pfs.API_PutTarV2Server) (retErr error) {
@@ -221,6 +226,7 @@ func (a *apiServerV2) FinishCommitInTransaction(
 	txnCtx *txnenv.TransactionContext,
 	request *pfs.FinishCommitRequest,
 ) error {
+	fmt.Println("called finish commit")
 	return metrics.ReportRequest(func() error {
 		return a.driver.finishCommitV2(txnCtx, request.Commit, request.Description)
 	})

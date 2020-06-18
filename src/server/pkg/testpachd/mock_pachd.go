@@ -400,6 +400,8 @@ type putTarFuncV2 func(pfs.API_PutTarV2Server) error
 type getTarFuncV2 func(*pfs.GetTarRequestV2, pfs.API_GetTarV2Server) error
 type getTarConditionalFuncV2 func(pfs.API_GetTarConditionalV2Server) error
 type listFileFuncV2 func(*pfs.ListFileRequest, pfs.API_ListFileV2Server) error
+type inspectFileFuncV2 func(context.Context, *pfs.InspectFileRequest) (*pfs.FileInfoV2, error)
+type walkFileFuncV2 func(*pfs.WalkFileRequest, pfs.API_WalkFileV2Server) error
 
 type mockCreateRepo struct{ handler createRepoFunc }
 type mockInspectRepo struct{ handler inspectRepoFunc }
@@ -435,6 +437,8 @@ type mockPutTarV2 struct{ handler putTarFuncV2 }
 type mockGetTarV2 struct{ handler getTarFuncV2 }
 type mockGetTarConditionalV2 struct{ handler getTarConditionalFuncV2 }
 type mockListFileV2 struct{ handler listFileFuncV2 }
+type mockInspectFileV2 struct{ handler inspectFileFuncV2 }
+type mockWalkFileV2 struct{ handler walkFileFuncV2 }
 
 func (mock *mockCreateRepo) Use(cb createRepoFunc)                   { mock.handler = cb }
 func (mock *mockInspectRepo) Use(cb inspectRepoFunc)                 { mock.handler = cb }
@@ -470,6 +474,8 @@ func (mock *mockPutTarV2) Use(cb putTarFuncV2)                       { mock.hand
 func (mock *mockGetTarV2) Use(cb getTarFuncV2)                       { mock.handler = cb }
 func (mock *mockGetTarConditionalV2) Use(cb getTarConditionalFuncV2) { mock.handler = cb }
 func (mock *mockListFileV2) Use(cb listFileFuncV2)                   { mock.handler = cb }
+func (mock *mockInspectFileV2) Use(cb inspectFileFuncV2)             { mock.handler = cb }
+func (mock *mockWalkFileV2) Use(cb walkFileFuncV2)                   { mock.handler = cb }
 
 type pfsServerAPI struct {
 	mock *mockPFSServer
@@ -511,6 +517,8 @@ type mockPFSServer struct {
 	GetTarV2            mockGetTarV2
 	GetTarConditionalV2 mockGetTarConditionalV2
 	ListFileV2          mockListFileV2
+	InspectFileV2       mockInspectFileV2
+	WalkFileV2          mockWalkFileV2
 }
 
 func (api *pfsServerAPI) CreateRepo(ctx context.Context, req *pfs.CreateRepoRequest) (*types.Empty, error) {
@@ -716,6 +724,18 @@ func (api *pfsServerAPI) ListFileV2(req *pfs.ListFileRequest, serv pfs.API_ListF
 		return api.mock.ListFileV2.handler(req, serv)
 	}
 	return errors.Errorf("unhandled pachd mock pfs.ListFileV2")
+}
+func (api *pfsServerAPI) InspectFileV2(ctx context.Context, req *pfs.InspectFileRequest) (*pfs.FileInfoV2, error) {
+	if api.mock.InspectFileV2.handler != nil {
+		return api.mock.InspectFileV2.handler(ctx, req)
+	}
+	return nil, errors.Errorf("unhandled pachd mock pfs.InspectFileV2")
+}
+func (api *pfsServerAPI) WalkFileV2(req *pfs.WalkFileRequest, serv pfs.API_WalkFileV2Server) error {
+	if api.mock.WalkFileV2.handler != nil {
+		return api.mock.WalkFileV2.handler(req, serv)
+	}
+	return errors.Errorf("unhandled pachd mock pfs.WalkFileV2")
 }
 
 /* PPS Server Mocks */

@@ -754,3 +754,95 @@ func getRand() *rand.Rand {
 func randomReader(n int) io.Reader {
 	return io.LimitReader(getRand(), int64(n))
 }
+
+func TestInspectFileV2(t *testing.T) {
+	config := newPachdConfig()
+	require.NoError(t, testpachd.WithRealEnv(func(env *testpachd.RealEnv) error {
+		ctx := env.Context
+		putFile := func(repo, commit, path string, data []byte) error {
+			fsspec := fileSetSpec{
+				path: data,
+			}
+			return env.PachClient.PutTarV2(repo, commit, fsspec.makeTarStream())
+		}
+		repo := "test"
+		require.NoError(t, env.PachClient.CreateRepo(repo))
+
+		fileContent1 := "foo\n"
+		commit1, err := env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		err = putFile(repo, commit1.ID, "foo", []byte(fileContent1))
+		require.NoError(t, err)
+		// TODO: can't read uncommitted filesets yet.
+		// fileInfo, err := env.PachClient.InspectFileV2(ctx, &pfs.InspectFileRequest{
+		// 	File: &pfs.File{
+		// 		Commit: commit1,
+		// 		Path:   "foo",
+		// 	},
+		// })
+		// require.NoError(t, err)
+		// require.NotNil(t, fileInfo)
+
+		require.NoError(t, env.PachClient.FinishCommit(repo, commit1.ID))
+
+		fileInfo, err := env.PachClient.InspectFileV2(ctx, &pfs.InspectFileRequest{
+			File: &pfs.File{
+				Commit: commit1,
+				Path:   "foo",
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, fileInfo)
+
+		fileContent2 := "barbar\n"
+		commit2, err := env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		err = putFile(repo, commit2.ID, "foo", []byte(fileContent2))
+		require.NoError(t, err)
+
+		// TODO: can't read uncommitted filesets yet.
+		// fileInfo, err = env.PachClient.InspectFileV2(ctx, &pfs.InspectFileRequest{
+		// 	File: &pfs.File{
+		// 		Commit: commit2,
+		// 		Path:   "foo",
+		// 	},
+		// })
+		// require.NoError(t, err)
+		// require.NotNil(t, fileInfo)
+
+		require.NoError(t, env.PachClient.FinishCommit(repo, commit2.ID))
+
+		fileInfo, err = env.PachClient.InspectFileV2(ctx, &pfs.InspectFileRequest{
+			File: &pfs.File{
+				Commit: commit2,
+				Path:   "foo",
+			},
+		})
+		require.NoError(t, err)
+
+		fileInfo, err = env.PachClient.InspectFileV2(ctx, &pfs.InspectFileRequest{
+			File: &pfs.File{
+				Commit: commit2,
+				Path:   "foo",
+			},
+		})
+		require.NoError(t, err)
+
+		fileContent3 := "bar\n"
+		commit3, err := env.PachClient.StartCommit(repo, "master")
+		require.NoError(t, err)
+		err = putFile(repo, commit3.ID, "bar", []byte(fileContent3))
+		require.NoError(t, err)
+		require.NoError(t, env.PachClient.FinishCommit(repo, commit3.ID))
+
+		fileInfos := []*pfs.FileInfoV2{}
+		err = env.PachClient.ListFileV2(repo, commit3.ID, "/*", func(fi *pfs.FileInfoV2) error {
+			fileInfos = append(fileInfos, fi)
+			return nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, 2, len(fileInfos))
+
+		return nil
+	}, config))
+}
