@@ -93,7 +93,7 @@ func (a *apiServerV2) PutTarV2(server pfs.API_PutTarV2Server) (retErr error) {
 }
 
 type putTarReader struct {
-	server    pfs.API_PutTarServer
+	server    pfs.API_PutTarV2Server
 	r         *bytes.Reader
 	bytesRead int64
 }
@@ -161,7 +161,7 @@ func (a *apiServerV2) GetTarConditionalV2(server pfs.API_GetTarConditionalV2Serv
 		glob := request.File.Path
 		var bytesWritten int64
 		err := a.driver.getTarConditional(server.Context(), repo, commit, glob, func(fr *FileReader) error {
-			if err := server.Send(&pfs.GetTarConditionalResponse{FileInfo: fr.Info()}); err != nil {
+			if err := server.Send(&pfs.GetTarConditionalResponseV2{FileInfo: fr.Info()}); err != nil {
 				return err
 			}
 			req, err := server.Recv()
@@ -183,25 +183,25 @@ func (a *apiServerV2) GetTarConditionalV2(server pfs.API_GetTarConditionalV2Serv
 			if err := w.Flush(); err != nil {
 				return err
 			}
-			return server.Send(&pfs.GetTarConditionalResponse{EOF: true})
+			return server.Send(&pfs.GetTarConditionalResponseV2{EOF: true})
 		})
 		return bytesWritten, err
 	})
 }
 
 type getTarConditionalWriter struct {
-	server       pfs.API_GetTarConditionalServer
+	server       pfs.API_GetTarConditionalV2Server
 	bytesWritten int64
 }
 
-func newGetTarConditionalWriter(server pfs.API_GetTarConditionalServer) *getTarConditionalWriter {
+func newGetTarConditionalWriter(server pfs.API_GetTarConditionalV2Server) *getTarConditionalWriter {
 	return &getTarConditionalWriter{
 		server: server,
 	}
 }
 
 func (w *getTarConditionalWriter) Write(data []byte) (int, error) {
-	if err := w.server.Send(&pfs.GetTarConditionalResponse{Data: data}); err != nil {
+	if err := w.server.Send(&pfs.GetTarConditionalResponseV2{Data: data}); err != nil {
 		return 0, err
 	}
 	w.bytesWritten += int64(len(data))
@@ -234,4 +234,17 @@ func (a *apiServerV2) CopyFile(ctx context.Context, request *pfs.CopyFileRequest
 		return nil, err
 	}
 	return &types.Empty{}, nil
+}
+
+// InspectFileV2 returns info about a file.
+func (a *apiServerV2) InspectFileV2(ctx context.Context, req *pfs.InspectFileRequest) (*pfs.FileInfoV2, error) {
+	return a.driver.inspectFile(a.env.GetPachClient(ctx), req.File)
+}
+
+// WalkFileV2 walks over all the files under a directory, including children of children.
+func (a *apiServerV2) WalkFileV2(req *pfs.WalkFileRequest, server pfs.API_WalkFileV2Server) error {
+	pachClient := a.env.GetPachClient(server.Context())
+	return a.driver.walkFile(pachClient, req.File, func(finfo *pfs.FileInfoV2) error {
+		return server.Send(finfo)
+	})
 }

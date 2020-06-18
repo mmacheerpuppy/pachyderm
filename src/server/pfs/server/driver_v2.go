@@ -534,3 +534,34 @@ func (d *driverV2) copyFile(pachClient *client.APIClient, src *pfs.File, dst *pf
 		})
 	})
 }
+
+func (d *driverV2) inspectFile(pachClient *client.APIClient, file *pfs.File) (fi *pfs.FileInfoV2, retErr error) {
+	commitInfo, err := d.inspectCommit(pachClient, file.Commit, pfs.CommitState_STARTED)
+	if err != nil {
+		return nil, err
+	}
+	commit := commitInfo.Commit
+	stopIter := errors.New("stop iteration")
+	err = d.getTarConditional(pachClient.Ctx(), commit.Repo.Name, commit.ID, file.Path, func(fr *FileReader) error {
+		fi = fr.Info()
+		return stopIter
+	})
+	if err != nil && err != stopIter {
+		return nil, err
+	}
+	if fi == nil {
+		return nil, pfsserver.ErrFileNotFound{File: file}
+	}
+	return fi, nil
+}
+
+func (d *driverV2) walkFile(pachClient *client.APIClient, file *pfs.File, f func(*pfs.FileInfoV2) error) (retErr error) {
+	commitInfo, err := d.inspectCommit(pachClient, file.Commit, pfs.CommitState_STARTED)
+	if err != nil {
+		return err
+	}
+	commit := commitInfo.Commit
+	return d.getTarConditional(pachClient.Ctx(), commit.Repo.Name, commit.ID, file.Path+"/*", func(fr *FileReader) error {
+		return f(fr.Info())
+	})
+}

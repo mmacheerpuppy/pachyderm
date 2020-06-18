@@ -37,7 +37,6 @@ type loadConfig struct {
 func newLoadConfig(opts ...loadConfigOption) *loadConfig {
 	config := &loadConfig{}
 	config.pachdConfig = newPachdConfig()
-	config.pachdConfig.StorageCompactionMaxFanIn = 2
 	for _, opt := range opts {
 		opt(config)
 	}
@@ -66,6 +65,7 @@ func newPachdConfig(opts ...pachdConfigOption) *serviceenv.PachdFullConfiguratio
 	config.StorageShardThreshold = units.GB
 	config.StorageLevelZeroSize = units.MB
 	config.StorageGCPolling = "30s"
+	config.StorageCompactionMaxFanIn = 2
 	for _, opt := range opts {
 		opt(config)
 	}
@@ -159,7 +159,7 @@ func newCommitGenerator(opts ...commitGeneratorOption) commitGenerator {
 				if config.putCancelConfig != nil && rand.Float64() < config.putCancelConfig.prob {
 					// TODO Not sure if we want to do anything with errors here?
 					cancelOperation(config.putCancelConfig, c, func(c *client.APIClient) error {
-						err := c.PutTar(repo, commit.ID, r)
+						err := c.PutTarV2(repo, commit.ID, r)
 						if err == nil {
 							validator.recordFileSet(fs)
 						}
@@ -168,7 +168,7 @@ func newCommitGenerator(opts ...commitGeneratorOption) commitGenerator {
 					})
 					continue
 				}
-				if err := c.PutTar(repo, commit.ID, r); err != nil {
+				if err := c.PutTarV2(repo, commit.ID, r); err != nil {
 					return err
 				}
 				validator.recordFileSet(fs)
@@ -177,7 +177,7 @@ func newCommitGenerator(opts ...commitGeneratorOption) commitGenerator {
 				return err
 			}
 			getTar := func(c *client.APIClient) error {
-				r, err := c.GetTar(repo, commit.ID, "/")
+				r, err := c.GetTarV2(repo, commit.ID, "/")
 				if err != nil {
 					return err
 				}
@@ -665,8 +665,7 @@ func TestListFileV2(t *testing.T) {
 		t.SkipNow()
 	}
 
-	config := &serviceenv.PachdFullConfiguration{}
-	config.StorageV2 = true
+	config := newPachdConfig()
 	require.NoError(t, testpachd.WithRealEnv(func(env *testpachd.RealEnv) error {
 		repo := "test"
 		require.NoError(t, env.PachClient.CreateRepo(repo))
@@ -680,7 +679,7 @@ func TestListFileV2(t *testing.T) {
 			"dir2/file2.1": []byte{},
 			"dir2/file2.2": []byte{},
 		}
-		err = env.PachClient.PutTar(repo, commit1.ID, fsSpec.makeTarStream())
+		err = env.PachClient.PutTarV2(repo, commit1.ID, fsSpec.makeTarStream())
 		require.NoError(t, err)
 
 		err = env.PachClient.FinishCommit(repo, commit1.ID)
@@ -713,7 +712,7 @@ func TestCompaction(t *testing.T) {
 		const (
 			nFileSets   = 100
 			filesPer    = 10
-			fileSetSize = 1e6
+			fileSetSize = 1e3
 		)
 		for i := 0; i < nFileSets; i++ {
 			fsSpec := fileSetSpec{}
@@ -725,7 +724,7 @@ func TestCompaction(t *testing.T) {
 
 				fsSpec[fmt.Sprintf("file%02d", j)] = data
 			}
-			if err := env.PachClient.PutTar(repo, commit1.ID, fsSpec.makeTarStream()); err != nil {
+			if err := env.PachClient.PutTarV2(repo, commit1.ID, fsSpec.makeTarStream()); err != nil {
 				return err
 			}
 			runtime.GC()

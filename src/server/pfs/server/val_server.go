@@ -11,21 +11,22 @@ import (
 	"golang.org/x/net/context"
 )
 
-var _ APIServer = &authedAPIServer{}
+var _ APIServer = &valAPIServer{}
 
-type authedAPIServer struct {
+type valAPIServer struct {
 	APIServer
 	env *serviceenv.ServiceEnv
 }
 
-func newAuthed(inner APIServer, env *serviceenv.ServiceEnv) *authedAPIServer {
-	return &authedAPIServer{
+func newValidated(inner APIServer, env *serviceenv.ServiceEnv) *valAPIServer {
+	return &valAPIServer{
 		APIServer: inner,
 		env:       env,
 	}
 }
 
-func (a *authedAPIServer) CopyFile(ctx context.Context, req *pfs.CopyFileRequest) (response *types.Empty, retErr error) {
+// CopyFile implements the protobuf pfs.CopyFile RPC
+func (a *valAPIServer) CopyFile(ctx context.Context, req *pfs.CopyFileRequest) (response *types.Empty, retErr error) {
 	src, dst := req.Src, req.Dst
 	// Validate arguments
 	if src == nil {
@@ -46,7 +47,6 @@ func (a *authedAPIServer) CopyFile(ctx context.Context, req *pfs.CopyFileRequest
 	if dst.Commit.Repo == nil {
 		return nil, errors.New("dst commit repo cannot be nil")
 	}
-
 	// authorization
 	if err := a.checkIsAuthorized(ctx, src.Commit.Repo, auth.Scope_READER); err != nil {
 		return nil, err
@@ -57,14 +57,44 @@ func (a *authedAPIServer) CopyFile(ctx context.Context, req *pfs.CopyFileRequest
 	if err := checkFilePath(dst.Path); err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return a.APIServer.CopyFile(ctx, req)
 }
 
-func (a *authedAPIServer) getAuth(ctx context.Context) client.AuthAPIClient {
+// InspectFileV2 returns info about a file.
+func (a *valAPIServer) InspectFileV2(ctx context.Context, req *pfs.InspectFileRequest) (*pfs.FileInfoV2, error) {
+	if err := validateFile(req.File); err != nil {
+		return nil, err
+	}
+	if err := a.checkIsAuthorized(ctx, req.File.Commit.Repo, auth.Scope_READER); err != nil {
+		return nil, err
+	}
+	return a.APIServer.InspectFileV2(ctx, req)
+}
+
+// WalkFileV2 walks over all the files under a directory, including children of children.
+func (a *valAPIServer) WalkFileV2(req *pfs.WalkFileRequest, server pfs.API_WalkFileV2Server) error {
+	file := req.File
+	// Validate arguments
+	if file == nil {
+		return errors.New("file cannot be nil")
+	}
+	if file.Commit == nil {
+		return errors.New("file commit cannot be nil")
+	}
+	if file.Commit.Repo == nil {
+		return errors.New("file commit repo cannot be nil")
+	}
+	if err := a.checkIsAuthorized(server.Context(), file.Commit.Repo, auth.Scope_READER); err != nil {
+		return err
+	}
+	return a.APIServer.WalkFileV2(req, server)
+}
+
+func (a *valAPIServer) getAuth(ctx context.Context) client.AuthAPIClient {
 	return a.env.GetPachClient(ctx)
 }
 
-func (a *authedAPIServer) checkIsAuthorized(ctx context.Context, r *pfs.Repo, s auth.Scope) error {
+func (a *valAPIServer) checkIsAuthorized(ctx context.Context, r *pfs.Repo, s auth.Scope) error {
 	client := a.getAuth(ctx)
 	me, err := client.WhoAmI(ctx, &auth.WhoAmIRequest{})
 	if auth.IsErrNotActivated(err) {
